@@ -16,6 +16,8 @@
 (define-constant ERR-MARKET-EXPIRED (err u11))
 (define-constant ERR-MARKET-NOT-EXPIRED (err u12))
 (define-constant ERR-UNAUTHORIZED (err u13))
+(define-constant ERR-BET-TOO-LOW (err u14))  ;; New error for minimum bet
+(define-constant ERR-BET-TOO-HIGH (err u15)) ;; New error for maximum bet
 
 ;; Data Variables
 (define-data-var market-name (string-ascii 50) "Policy Prediction Market")
@@ -24,6 +26,8 @@
 
 ;; Configuration
 (define-data-var expiry-period uint u10000) ;; Number of blocks after close-block before market expires
+(define-data-var min-bet-amount uint u10)   ;; Minimum bet amount in STX
+(define-data-var max-bet-amount uint u1000000) ;; Maximum bet amount in STX (1 million STX)
 
 ;; Maps
 (define-map markets
@@ -93,7 +97,8 @@
                       (map-get? bets { market-id: market-id, user: tx-sender })))
     )
     (asserts! (is-valid-market-id market-id) ERR-MARKET-NOT-FOUND)
-    (asserts! (> amount u0) ERR-INVALID-BET)
+    (asserts! (>= amount (var-get min-bet-amount)) ERR-BET-TOO-LOW)
+    (asserts! (<= amount (var-get max-bet-amount)) ERR-BET-TOO-HIGH)
     (let
       (
         (market (unwrap! (map-get? markets { market-id: market-id }) ERR-MARKET-NOT-FOUND))
@@ -192,6 +197,32 @@
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
     (ok (var-set expiry-period new-period))
+  )
+)
+
+;; Getter for minimum bet amount
+(define-read-only (get-min-bet-amount)
+  (ok (var-get min-bet-amount))
+)
+
+;; Setter for minimum bet amount (only contract owner can set this)
+(define-public (set-min-bet-amount (new-amount uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+    (ok (var-set min-bet-amount new-amount))
+  )
+)
+
+;; Getter for maximum bet amount
+(define-read-only (get-max-bet-amount)
+  (ok (var-get max-bet-amount))
+)
+
+;; Setter for maximum bet amount (only contract owner can set this)
+(define-public (set-max-bet-amount (new-amount uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+    (ok (var-set max-bet-amount new-amount))
   )
 )
 
