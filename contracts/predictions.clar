@@ -16,8 +16,9 @@
 (define-constant ERR-MARKET-EXPIRED (err u11))
 (define-constant ERR-MARKET-NOT-EXPIRED (err u12))
 (define-constant ERR-UNAUTHORIZED (err u13))
-(define-constant ERR-BET-TOO-LOW (err u14))  ;; New error for minimum bet
-(define-constant ERR-BET-TOO-HIGH (err u15)) ;; New error for maximum bet
+(define-constant ERR-BET-TOO-LOW (err u14))
+(define-constant ERR-BET-TOO-HIGH (err u15))
+(define-constant ERR-INVALID-PARAMETER (err u16))  ;; New error for invalid input parameters
 
 ;; Data Variables
 (define-data-var market-name (string-ascii 50) "Policy Prediction Market")
@@ -25,9 +26,9 @@
 (define-data-var contract-owner principal tx-sender)
 
 ;; Configuration
-(define-data-var expiry-period uint u10000) ;; Number of blocks after close-block before market expires
-(define-data-var min-bet-amount uint u10)   ;; Minimum bet amount in STX
-(define-data-var max-bet-amount uint u1000000) ;; Maximum bet amount in STX (1 million STX)
+(define-data-var expiry-period uint u10000)
+(define-data-var min-bet-amount uint u10)
+(define-data-var max-bet-amount uint u1000000)
 
 ;; Maps
 (define-map markets
@@ -57,18 +58,21 @@
   )
 )
 
+;; Validation function for string length
+(define-private (is-valid-string-length (str (string-ascii 256)))
+  (and (>= (len str) u1) (<= (len str) u256))
+)
+
 ;; Public Functions
 
 ;; Create a new market
-;; @param description: A description of the market
-;; @param close-block: The block height at which the market will close
-;; @returns: The ID of the newly created market
 (define-public (create-market (description (string-ascii 256)) (close-block uint))
   (let
     (
       (market-id (var-get next-market-id))
       (expiry-block (+ close-block (var-get expiry-period)))
     )
+    (asserts! (is-valid-string-length description) ERR-INVALID-PARAMETER)
     (asserts! (> close-block block-height) ERR-INVALID-CLOSE-BLOCK)
     (map-set markets
       { market-id: market-id }
@@ -86,10 +90,6 @@
 )
 
 ;; Place a bet on a market
-;; @param market-id: The ID of the market to bet on
-;; @param prediction: The predicted outcome (true or false)
-;; @param amount: The amount of STX to bet
-;; @returns: Success or failure
 (define-public (place-bet (market-id uint) (prediction bool) (amount uint))
   (let
     (
@@ -116,9 +116,6 @@
 )
 
 ;; Resolve a market
-;; @param market-id: The ID of the market to resolve
-;; @param outcome: The actual outcome of the market (true or false)
-;; @returns: Success or failure
 (define-public (resolve-market (market-id uint) (outcome bool))
   (let
     (
@@ -137,8 +134,6 @@
 )
 
 ;; Claim winnings from a resolved market
-;; @param market-id: The ID of the market to claim winnings from
-;; @returns: Success or failure
 (define-public (claim-winnings (market-id uint))
   (let
     (
@@ -155,8 +150,6 @@
 )
 
 ;; Refund bets for an expired market
-;; @param market-id: The ID of the expired market
-;; @returns: Success or failure
 (define-public (refund-expired-bet (market-id uint))
   (let
     (
@@ -172,8 +165,6 @@
 )
 
 ;; Clean up an expired market (can only be called by the market creator)
-;; @param market-id: The ID of the expired market to clean up
-;; @returns: Success or failure
 (define-public (cleanup-expired-market (market-id uint))
   (let
     (
@@ -196,6 +187,7 @@
 (define-public (set-expiry-period (new-period uint))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+    (asserts! (and (> new-period u0) (<= new-period u1000000)) ERR-INVALID-PARAMETER)
     (ok (var-set expiry-period new-period))
   )
 )
@@ -209,6 +201,7 @@
 (define-public (set-min-bet-amount (new-amount uint))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+    (asserts! (and (> new-amount u0) (< new-amount (var-get max-bet-amount))) ERR-INVALID-PARAMETER)
     (ok (var-set min-bet-amount new-amount))
   )
 )
@@ -222,6 +215,7 @@
 (define-public (set-max-bet-amount (new-amount uint))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+    (asserts! (and (> new-amount (var-get min-bet-amount)) (<= new-amount u1000000000000)) ERR-INVALID-PARAMETER)
     (ok (var-set max-bet-amount new-amount))
   )
 )
@@ -235,6 +229,7 @@
 (define-public (transfer-ownership (new-owner principal))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-UNAUTHORIZED)
+    (asserts! (not (is-eq new-owner (var-get contract-owner))) ERR-INVALID-PARAMETER)
     (ok (var-set contract-owner new-owner))
   )
 )
